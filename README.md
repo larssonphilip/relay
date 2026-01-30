@@ -48,10 +48,7 @@ Relay is opinionated, modular, and intentionally boring where it matters.
 ## Example
 
 ```bash
-relay turn on kitchen.lights
-relay flash esp32 firmware
-relay check temp.sensor
-relay summarize this schematic
+Coming soon
 ```
 
 Intent in. Execution out.
