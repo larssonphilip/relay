@@ -54,8 +54,10 @@ tmp/
 temp/
 *.tmp
 
+PLAN.md
+
 # Lock files (choose one based on your package manager)
 # Uncomment the one you're NOT using:
-# package-lock.json  # if using yarn or pnpm
+package-lock.json
 # yarn.lock          # if using npm or pnpm
 # pnpm-lock.yaml     # if using npm or yarn
