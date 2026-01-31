@@ -33,6 +33,7 @@ export class Agent {
     })
 
     const context = this.memory.getContext()
+
     const systemPrompt = this.buildSystemPrompt(context)
     const messages = context.recentMessages.map((msg: Message) => ({
       role: msg.role as 'user' | 'assistant',
@@ -55,23 +56,45 @@ export class Agent {
 
     if (response.toolCalls && response.toolCalls.length > 0) {
       for (const toolCall of response.toolCalls) {
-        console.log(`\n🔧 Executing: ${toolCall.name}`)
+        console.log(`\nExecuting: ${toolCall.name}`)
         console.log(`   Parameters: ${JSON.stringify(toolCall.input, null, 2)}`)
 
         const result = await skillRegistry.execute(toolCall.name, toolCall.input)
 
         if (result.success) {
           console.log(`   ✓ Success`)
-          toolResults.push(`Tool: ${toolCall.name}\nResult: ${result.output}`)
+          toolResults.push(`${result.output}`)
         } else {
           console.log(`   ✗ Error: ${result.error}`)
-          toolResults.push(`Tool: ${toolCall.name}\nError: ${result.error}`)
+          toolResults.push(`Error: ${result.error}`)
+        }
+      }
+    }
+    else if (response.text.includes('<tool_call>') || response.text.includes('arg_key')) {
+      console.log('\nModel returned XML-style tool calls, parsing manually...')
+
+      const parsed = this.parseXMLToolCalls(response.text)
+
+      for (const toolCall of parsed) {
+        console.log(`\nExecuting: ${toolCall.name}`)
+        console.log(`   Parameters: ${JSON.stringify(toolCall.params, null, 2)}`)
+
+        const result = await skillRegistry.execute(toolCall.name, toolCall.params)
+
+        if (result.success) {
+          console.log(`   ✓ Success`)
+          toolResults.push(`${result.output}`)
+        } else {
+          console.log(`   ✗ Error: ${result.error}`)
+          toolResults.push(`Error: ${result.error}`)
         }
       }
 
-      if (toolResults.length > 0) {
-        finalResponse = response.text + '\n\n' + toolResults.join('\n\n')
-      }
+      finalResponse = ''
+    }
+
+    if (toolResults.length > 0) {
+      finalResponse = toolResults.join('\n\n')
     }
 
     this.memory.saveMessage({
@@ -83,6 +106,53 @@ export class Agent {
     return finalResponse
   }
 
+  private parseXMLToolCalls(text: string): Array<{ name: string; params: any }> {
+    const toolCalls: Array<{ name: string; params: any }> = []
+    const lines = text.trim().split('\n')
+    const name = lines[0].trim()
+
+    if (!name) return toolCalls
+
+    const params: any = {}
+
+    const argPattern = /<arg_key>(.*?)<\/arg_key>\s*<arg_value>(.*?)<\/arg_value>/gs
+    let match
+
+    while ((match = argPattern.exec(text)) !== null) {
+      const key = match[1].trim()
+      let value = match[2].trim()
+
+      try {
+        if (value.startsWith('{') || value.startsWith('[')) {
+          value = JSON.parse(value)
+        }
+      } catch {
+        // Keep as string
+      }
+
+      params[key] = value
+    }
+
+    console.log(`   Parsed tool name: ${name}`)
+    console.log(`   Parsed params: ${JSON.stringify(params, null, 2)}`)
+
+    if (Object.keys(params).length > 0) {
+      toolCalls.push({ name, params })
+    } else {
+      const simplePattern = /(\w+):\s*(.+?)(?=\n|$)/g
+      while ((match = simplePattern.exec(text)) !== null) {
+        params[match[1].trim()] = match[2].trim()
+      }
+
+      console.log(`   Fallback parsed params: ${JSON.stringify(params, null, 2)}`)
+
+      if (Object.keys(params).length > 0) {
+        toolCalls.push({ name, params })
+      }
+    }
+
+    return toolCalls
+  }
   private buildSystemPrompt(context: any): string {
     const facts = context.relevantFacts
       .map((f: any) => `- ${f.content}`)
@@ -110,7 +180,7 @@ Rules:
 2. Show code/output, don't describe it
 3. No fluff or unnecessary explanations
 4. Use tools proactively when helpful
-5. When using tools, explain what you're doing briefly`
+5. When tools return results, present them clearly to the user`
   }
 
   getMemory(): Memory {
