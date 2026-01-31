@@ -1,93 +1,120 @@
-import Anthropic from '@anthropic-ai/sdk'
-import type { Message, ClaudeMessage, ConversationContext } from './types.js'
+import { zenGenerateText } from '../lib/providers/zen.js'
 import { Memory } from './memory.js'
+import { skillRegistry } from '../skills/index.js'
+import type { Message, AgentConfig } from './types.js'
+import { DEFAULT_MODEL } from './types.js'
 
 export class Agent {
-  private client: Anthropic
   private memory: Memory
-  private model = 'claude-sonnet-4-20250514'
+  private config: AgentConfig
 
-  constructor() {
-    this.client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    })
+  constructor(config?: Partial<AgentConfig>) {
     this.memory = new Memory()
+    this.config = {
+      model: config?.model || DEFAULT_MODEL,
+      maxTokens: config?.maxTokens || 4096,
+      temperature: config?.temperature || 0.7
+    }
   }
 
-  private buildSystemPrompt(context: ConversationContext): string {
-    const factsList = context.relevantFacts.length > 0
-      ? context.relevantFacts.map(f => `- ${f.content}`).join('\n')
-      : '(No facts stored yet)'
-
-    return `You are a terse technical assistant for electronics development and home automation.
-
-Environment:
-- OS: macOS
-- Editor: Neovim
-- Workflow: Terminal-based with tmux
-
-Known facts:
-${factsList}
-
-Rules:
-1. Be direct and technical - no fluff
-2. Show code/output, don't describe it
-3. Use tools proactively for reads (don't ask permission)
-4. For writes/destructive actions, show the change and ask "Apply?"
-5. Remember technical details (pin assignments, addresses, commands)
-
-Keep responses concise. When showing code or diffs, use the actual content.`
+  setModel(model: string): void {
+    this.config.model = model
   }
 
-  private buildMessages(context: ConversationContext, userMessage: string): ClaudeMessage[] {
-    const messages: ClaudeMessage[] = []
-
-    context.recentMessages.forEach(msg => {
-      messages.push({
-        role: msg.role,
-        content: msg.content
-      })
-    })
-
-    messages.push({
-      role: 'user',
-      content: userMessage
-    })
-
-    return messages
+  getModel(): string {
+    return this.config.model
   }
 
-  async processMessage(userMessage: string): Promise<string> {
+  async reason(userMessage: string): Promise<string> {
     this.memory.saveMessage({
       role: 'user',
       content: userMessage,
       timestamp: Date.now()
     })
 
-    const context = this.memory.getContext(userMessage)
-
+    const context = this.memory.getContext()
     const systemPrompt = this.buildSystemPrompt(context)
-    const messages = this.buildMessages(context, userMessage)
+    const messages = context.recentMessages.map((msg: Message) => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }))
 
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: 4096,
+    const tools = skillRegistry.toToolDefinitions()
+
+    let response = await zenGenerateText({
+      model: this.config.model,
+      messages,
       system: systemPrompt,
-      messages: messages
+      maxTokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+      tools
     })
 
-    const textContent = response.content
-      .filter(block => block.type === 'text')
-      .map(block => (block as any).text)
-      .join('\n')
+    let finalResponse = response.text
+    let toolResults: string[] = []
+
+    if (response.toolCalls && response.toolCalls.length > 0) {
+      for (const toolCall of response.toolCalls) {
+        console.log(`\n🔧 Executing: ${toolCall.name}`)
+        console.log(`   Parameters: ${JSON.stringify(toolCall.input, null, 2)}`)
+
+        const result = await skillRegistry.execute(toolCall.name, toolCall.input)
+
+        if (result.success) {
+          console.log(`   ✓ Success`)
+          toolResults.push(`Tool: ${toolCall.name}\nResult: ${result.output}`)
+        } else {
+          console.log(`   ✗ Error: ${result.error}`)
+          toolResults.push(`Tool: ${toolCall.name}\nError: ${result.error}`)
+        }
+      }
+
+      if (toolResults.length > 0) {
+        finalResponse = response.text + '\n\n' + toolResults.join('\n\n')
+      }
+    }
 
     this.memory.saveMessage({
       role: 'assistant',
-      content: textContent,
+      content: finalResponse,
       timestamp: Date.now()
     })
 
-    return textContent
+    return finalResponse
+  }
+
+  private buildSystemPrompt(context: any): string {
+    const facts = context.relevantFacts
+      .map((f: any) => `- ${f.content}`)
+      .join('\n')
+
+    const tools = skillRegistry.getAll()
+      .map(s => `- ${s.name}: ${s.description}`)
+      .join('\n')
+
+    return `You are a terse technical assistant for electronics and home automation work.
+
+Environment:
+- OS: macOS
+- Editor: Neovim
+- Workflow: Terminal, tmux
+
+Available tools:
+${tools}
+
+Known facts:
+${facts || '(none yet)'}
+
+Rules:
+1. Be direct and concise
+2. Show code/output, don't describe it
+3. No fluff or unnecessary explanations
+4. Use tools proactively when helpful
+5. When using tools, explain what you're doing briefly`
+  }
+
+  getMemory(): Memory {
+    return this.memory
   }
 
   close(): void {

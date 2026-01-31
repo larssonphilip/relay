@@ -8,6 +8,14 @@ export interface Message {
   timestamp: number
 }
 
+export interface AgentConfig {
+  model: string
+  maxTokens?: number
+  temperature?: number
+}
+
+export const DEFAULT_MODEL = 'big-pickle'
+
 export interface SkillDefinition {
   name: string
   description: string
@@ -30,19 +38,4 @@ export interface StoredFact {
 export interface ConversationContext {
   recentMessages: Message[]
   relevantFacts: StoredFact[]
-}
-
-export interface ClaudeMessage {
-  role: 'user' | 'assistant'
-  content: string | Array<{ type: string;[key: string]: any }>
-}
-
-export interface ClaudeToolDefinition {
-  name: string
-  description: string
-  input_schema: {
-    type: 'object'
-    properties: Record<string, any>
-    required: string[]
-  }
 }

@@ -17,6 +17,7 @@
     "better-sqlite3": "^12.6.2",
     "consola": "^3.4.2",
     "dotenv": "^17.2.3",
+    "openai": "^6.17.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
