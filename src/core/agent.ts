@@ -153,6 +153,7 @@ export class Agent {
 
     return toolCalls
   }
+
   private buildSystemPrompt(context: any): string {
     const facts = context.relevantFacts
       .map((f: any) => `- ${f.content}`)
@@ -175,12 +176,13 @@ ${tools}
 Known facts:
 ${facts || '(none yet)'}
 
-Rules:
-1. Be direct and concise
-2. Show code/output, don't describe it
-3. No fluff or unnecessary explanations
-4. Use tools proactively when helpful
-5. When tools return results, present them clearly to the user`
+CRITICAL RULES:
+1. ALWAYS use tools when the user asks a question that requires them
+2. For git questions, you MUST call git_diff, git_status, git_log, etc.
+3. NEVER make up or hallucinate git diffs, file contents, or command outputs
+4. If you don't use a tool, the user cannot see the actual data
+5. Be direct and concise in your responses AFTER the tool returns results
+6. Don't use <think> tags or explain your reasoning - just use the tools`
   }
 
   getMemory(): Memory {
