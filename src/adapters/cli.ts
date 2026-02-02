@@ -8,7 +8,7 @@ export class CLI {
   private rl: readline.Interface
 
   constructor() {
-    this.agent = new Agent()
+    this.agent = new Agent({ dbPath: './data/memory-cli.db' })
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -51,12 +51,19 @@ export class CLI {
       this.rl.prompt()
     })
 
+
     this.rl.on('close', () => {
       this.agent.close()
       consola.info('\nGoodbye!')
       process.exit(0)
     })
   }
+
+  stop(): void {
+    this.rl.close()
+    this.agent.close()
+  }
+
 
   private async handleCommand(cmd: string) {
     const [command, ...args] = cmd.slice(1).split(' ')

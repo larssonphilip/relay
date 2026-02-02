@@ -8,8 +8,8 @@ export class Agent {
   private memory: Memory
   private config: AgentConfig
 
-  constructor(config?: Partial<AgentConfig>) {
-    this.memory = new Memory()
+  constructor(config?: Partial<AgentConfig & { dbPath?: string }>) {
+    this.memory = new Memory(config?.dbPath)
     this.config = {
       model: config?.model || DEFAULT_MODEL,
       maxTokens: config?.maxTokens || 4096,

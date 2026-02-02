@@ -4,13 +4,13 @@ import { fileURLToPath } from 'url'
 import type { Message, StoredFact, ConversationContext } from './types.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DB_PATH = path.join(__dirname, '../../data/memory.db')
 
 export class Memory {
   private db: Database.Database
 
-  constructor() {
-    this.db = new Database(DB_PATH)
+  constructor(dbPath?: string) {
+    const finalPath = dbPath || path.join(__dirname, '../../data/memory.db')
+    this.db = new Database(finalPath)
     this.db.pragma('journal_mode = WAL')
     this.initSchema()
   }
@@ -24,7 +24,6 @@ export class Memory {
         timestamp INTEGER NOT NULL
       )
     `)
-
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS facts 
       USING fts5(content, timestamp UNINDEXED)
@@ -56,12 +55,10 @@ export class Memory {
     return result.count
   }
 
-
   saveFact(content: string): void {
     const existing = this.db.prepare(
       "SELECT rowid FROM facts WHERE content = ?"
     ).get(content)
-
     if (!existing) {
       const stmt = this.db.prepare(`
         INSERT INTO facts (content, timestamp)
@@ -97,7 +94,6 @@ export class Memory {
     const relevantFacts = query
       ? this.searchFacts(query, 10)
       : this.getAllFacts(10)
-
     return {
       recentMessages,
       relevantFacts
