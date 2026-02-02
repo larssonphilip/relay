@@ -2,6 +2,7 @@ import readline from 'readline'
 import consola from 'consola'
 import { Agent } from '../core/agent.js'
 import { ZEN_MODELS } from '../lib/providers/zen.js'
+import { runSetup } from '../setup.js'
 
 export class CLI {
   private agent: Agent
@@ -21,7 +22,7 @@ export class CLI {
 
     consola.box('AI Assistant')
     consola.info(`Model: ${currentModel?.name || this.agent.getModel()}`)
-    consola.info('Commands: /models, /facts, /exit\n')
+    consola.info('Commands: /models, /facts, /setup, /exit\n')
 
     this.rl.prompt()
 
@@ -51,19 +52,12 @@ export class CLI {
       this.rl.prompt()
     })
 
-
     this.rl.on('close', () => {
       this.agent.close()
       consola.info('\nGoodbye!')
       process.exit(0)
     })
   }
-
-  stop(): void {
-    this.rl.close()
-    this.agent.close()
-  }
-
 
   private async handleCommand(cmd: string) {
     const [command, ...args] = cmd.slice(1).split(' ')
@@ -86,14 +80,29 @@ export class CLI {
         this.showFacts()
         break
 
+      case 'setup':
+        this.rl.pause()
+        try {
+          await runSetup()
+          consola.info('Restart Relay for changes to take effect')
+        } catch (error: any) {
+          if (error.message !== 'canceled') {
+            consola.error('Setup error:', error.message)
+          }
+        }
+        this.rl.resume()
+        break
+
       case 'exit':
+        this.rl.close()
+        break
       case 'quit':
         this.rl.close()
         break
 
       default:
         consola.warn(`Unknown command: /${command}`)
-        consola.info('Available: /models, /facts, /exit')
+        consola.info('Available: /models, /facts, /setup, /exit')
     }
   }
 
@@ -127,7 +136,7 @@ export class CLI {
           const marker = isCurrent ? '→' : ' '
           const freeTag = model.free ? ' (FREE)' : ''
           console.log(`${marker} ${globalIndex}. ${model.name}${freeTag}`)
-          console.log(`   \x1b[90m${model.id}\x1b[0m`) // gray color using ANSI
+          console.log(`   \x1b[90m${model.id}\x1b[0m`)
           globalIndex++
         })
         console.log()
@@ -182,8 +191,13 @@ export class CLI {
     facts.forEach((fact, idx) => {
       const date = new Date(fact.timestamp).toLocaleString()
       console.log(`  ${idx + 1}. ${fact.content}`)
-      console.log(`     \x1b[90m${date}\x1b[0m`) // gray color
+      console.log(`     \x1b[90m${date}\x1b[0m`)
     })
     console.log()
+  }
+
+  stop(): void {
+    this.rl.close()
+    this.agent.close()
   }
 }
