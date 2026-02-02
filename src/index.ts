@@ -2,10 +2,7 @@ import 'dotenv/config'
 import { CLI } from './adapters/cli.js'
 import { TelegramAdapter } from './adapters/telegram.js'
 
-import './skills/shell.js'
-import './skills/files.js'
-import './skills/homeassistant.js'
-import './skills/git.js'
+import './skills'
 
 async function main() {
   const args = process.argv.slice(2)
